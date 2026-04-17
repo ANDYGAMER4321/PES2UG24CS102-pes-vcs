@@ -163,7 +163,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         return -1;
     }
 
-    // gotta fsync the directory itself too apparently
+    //gotta fsync the directory itself 
     int dir_fd = open(shard_dir, O_RDONLY | O_DIRECTORY);
     if (dir_fd >= 0) {
         fsync(dir_fd);
