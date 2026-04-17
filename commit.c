@@ -225,6 +225,10 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     }
     free(data);
 
-    
+    if (head_update(commit_id_out) < 0) {
+        return -1;
+    }
+
     return 0;
+    
 }
