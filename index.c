@@ -169,10 +169,40 @@ int index_load(Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_save(const Index *index) {
-    // TODO: Implement atomic index saving
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    char temp_path[512];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp_XXXXXX", INDEX_FILE);
+    
+    int fd = mkstemp(temp_path);
+    if (fd < 0) return -1;
+
+    FILE *f = fdopen(fd, "w");
+    if (!f) {
+        close(fd);
+        unlink(temp_path);
+        return -1;
+    }
+
+    for (int i = 0; i < index->count; i++) {
+        const IndexEntry *entry = &index->entries[i];
+        char hash_hex[HASH_HEX_SIZE + 1];
+        hash_to_hex(&entry->hash, hash_hex);
+        
+        fprintf(f, "%06o %s %lu %u %s\n",
+                entry->mode, hash_hex, entry->mtime_sec,
+                entry->size, entry->path);
+    }
+
+    // Ensure it hits the disk before renaming
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f); // This also closes the underlying fd
+
+    if (rename(temp_path, INDEX_FILE) < 0) {
+        unlink(temp_path);
+        return -1;
+    }
+
+    return 0;
 }
 
 // Stage a file for the next commit.
