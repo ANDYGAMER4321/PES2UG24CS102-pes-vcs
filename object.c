@@ -94,9 +94,84 @@ int object_exists(const ObjectID *id) {
 //
 // Returns 0 on success, -1 on error.
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
-    // TODO: Implement
-    (void)type; (void)data; (void)len; (void)id_out;
-    return -1;
+    const char *type_str = "";
+    if (type == OBJ_BLOB) type_str = "blob";
+    else if (type == OBJ_TREE) type_str = "tree";
+    else if (type == OBJ_COMMIT) type_str = "commit";
+    else return -1; // wtf is this type
+
+    // set up the header string
+    char header[64];
+    int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
+
+    // malloc enough space for header + null + data
+    size_t full_len = header_len + 1 + len;
+    unsigned char *full_data = malloc(full_len);
+    if (!full_data) return -1;
+
+    // shove it all into the buffer
+    memcpy(full_data, header, header_len);
+    full_data[header_len] = '\0';
+    memcpy(full_data + header_len + 1, data, len);
+
+    // hash it up
+    compute_hash(full_data, full_len, id_out);
+
+    // bail early if we already got this exact object so we don't waste time
+    if (object_exists(id_out)) {
+        free(full_data);
+        return 0; 
+    }
+
+    // figure out where this is going
+    char final_path[512];
+    object_path(id_out, final_path, sizeof(final_path));
+
+    char shard_dir[512];
+    strncpy(shard_dir, final_path, sizeof(shard_dir));
+    char *last_slash = strrchr(shard_dir, '/');
+    if (last_slash) *last_slash = '\0';
+
+    // make the dir, ignore if it already exists
+    mkdir(shard_dir, 0755); 
+
+    // write to a temp file first for safety vibes
+    char temp_path[512];
+    snprintf(temp_path, sizeof(temp_path), "%s/temp_XXXXXX", shard_dir);
+    
+    int fd = mkstemp(temp_path);
+    if (fd < 0) {
+        free(full_data);
+        return -1;
+    }
+
+    if (write(fd, full_data, full_len) != (ssize_t)full_len) {
+        close(fd);
+        unlink(temp_path);
+        free(full_data);
+        return -1;
+    }
+
+    // flush to disk so it doesn't get corrupted if we crash
+    fsync(fd);
+    close(fd);
+
+    // atomic swap to the real name
+    if (rename(temp_path, final_path) < 0) {
+        unlink(temp_path);
+        free(full_data);
+        return -1;
+    }
+
+    // gotta fsync the directory itself too apparently
+    int dir_fd = open(shard_dir, O_RDONLY | O_DIRECTORY);
+    if (dir_fd >= 0) {
+        fsync(dir_fd);
+        close(dir_fd);
+    }
+
+    free(full_data);
+    return 0;
 }
 
 // Read an object from the store.
