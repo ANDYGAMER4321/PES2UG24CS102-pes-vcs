@@ -134,7 +134,41 @@ static int write_tree_level(IndexEntry *entries, int count, int offset, ObjectID
     Tree tree;
     tree.count = 0;
     int i = 0;
-    while{}
+    while (i < count && tree.count < MAX_TREE_ENTRIES) {
+        char *name = entries[i].path + offset;
+        char *slash = strchr(name, '/');
+        
+        if (slash) {
+            // we hit a directory, group everything inside it
+            int dir_len = slash - name;
+            int j = i;
+            
+            // advance j past all files inside this specific directory
+            while (j < count && 
+                   strncmp(entries[j].path + offset, name, dir_len) == 0 && 
+                   (entries[j].path + offset)[dir_len] == '/') {
+                j++;
+            }
+            
+            // recursively build and hash the subdirectory tree
+            ObjectID sub_tree_hash;
+            write_tree_level(&entries[i], j - i, offset + dir_len + 1, &sub_tree_hash);
+            
+            tree.entries[tree.count].mode = MODE_DIR;
+            strncpy(tree.entries[tree.count].name, name, dir_len);
+            tree.entries[tree.count].name[dir_len] = '\0';
+            tree.entries[tree.count].hash = sub_tree_hash;
+            tree.count++;
+            
+            i = j; // skip over all the files we just processed
+        } else {
+            // just a regular file
+            tree.entries[tree.count].mode = entries[i].mode;
+            strcpy(tree.entries[tree.count].name, name);
+            tree.entries[tree.count].hash = entries[i].hash;
+            tree.count++;
+            i++;
+        }
     
     // pack it up and write to disk
     void *data; 
