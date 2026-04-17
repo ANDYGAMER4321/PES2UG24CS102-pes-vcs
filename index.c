@@ -246,7 +246,32 @@ int index_add(Index *index, const char *path) {
     }
     free(data);
 
-    // TODO: Update the index array
+    // 4. Find existing entry or create a new one
+    IndexEntry *entry = index_find(index, path);
+    if (!entry) {
+        if (index->count >= MAX_INDEX_ENTRIES) return -1;
+        entry = &index->entries[index->count++];
+        strcpy(entry->path, path);
+    }
+
+    // 5. Update the entry data
+    entry->mode = get_file_mode(path);
+    entry->hash = blob_hash;
+    entry->mtime_sec = st.st_mtime;
+    entry->size = size;
+
+    // 6. Sort index alphabetically (Git requirement)
+    // We do a simple bubble sort on the last element for efficiency since we only added one
+    for (int i = index->count - 1; i > 0; i--) {
+        if (strcmp(index->entries[i-1].path, index->entries[i].path) > 0) {
+            IndexEntry temp = index->entries[i-1];
+            index->entries[i-1] = index->entries[i];
+            index->entries[i] = temp;
+        } else {
+            break;
+        }
+    }
+
     free(data);
     return 0;
 }
