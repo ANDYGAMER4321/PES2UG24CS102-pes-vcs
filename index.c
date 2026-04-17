@@ -238,7 +238,15 @@ int index_add(Index *index, const char *path) {
     }
     fclose(f);
 
-    // TODO: Write blob and update index
+    // 3. Write data to object store as a blob
+    ObjectID blob_hash;
+    if (object_write(OBJ_BLOB, data, size, &blob_hash) < 0) {
+        free(data);
+        return -1;
+    }
+    free(data);
+
+    // TODO: Update the index array
     free(data);
     return 0;
 }
