@@ -169,8 +169,9 @@ static int write_tree_level(IndexEntry *entries, int count, int offset, ObjectID
             tree.count++;
             i++;
         }
+        
     
-    // pack it up and write to disk
+    // pack it up and write it to disk
     void *data; 
     size_t len;
     if (tree_serialize(&tree, &data, &len) < 0) return -1;
