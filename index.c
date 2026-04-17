@@ -215,8 +215,30 @@ int index_save(const Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_add(Index *index, const char *path) {
-    // TODO: Implement file staging
-    // (See Lab Appendix for logical steps)
-    (void)index; (void)path;
-    return -1;
+    // 1. Get file metadata (size, mode, modification time)
+    struct stat st;
+    if (lstat(path, &st) != 0) return -1;
+    if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) return -1; // Only track files and symlinks
+
+    // 2. Read the entire file into memory
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+
+    size_t size = st.st_size;
+    unsigned char *data = malloc(size);
+    if (!data && size > 0) {
+        fclose(f);
+        return -1;
+    }
+
+    if (size > 0 && fread(data, 1, size, f) != size) {
+        free(data);
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+
+    // TODO: Write blob and update index
+    free(data);
+    return 0;
 }
