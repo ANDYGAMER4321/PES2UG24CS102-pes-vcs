@@ -197,7 +197,75 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
-    // TODO: Implement
-    (void)id; (void)type_out; (void)data_out; (void)len_out;
-    return -1;
+    char path[512];
+    object_path(id, path, sizeof(path));
+
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+
+    // figure out file size
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (file_size < 0) {
+        fclose(f);
+        return -1;
+    }
+
+    // dump the whole thing into memory
+    unsigned char *buffer = malloc(file_size);
+    if (!buffer) {
+        fclose(f);
+        return -1;
+    }
+
+    if (fread(buffer, 1, file_size, f) != (size_t)file_size) {
+        free(buffer);
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+
+    // double check the hash so we know it's not corrupted
+    ObjectID computed_id;
+    compute_hash(buffer, file_size, &computed_id);
+    if (memcmp(id->hash, computed_id.hash, HASH_SIZE) != 0) {
+        free(buffer);
+        return -1; // hash mismatch, big yikes
+    }
+
+    // find the null byte that splits header from data
+    void *null_pos = memchr(buffer, '\0', file_size);
+    if (!null_pos) {
+        free(buffer);
+        return -1;
+    }
+
+    // parse what type of object we're dealing with
+    if (strncmp((char *)buffer, "blob ", 5) == 0) {
+        *type_out = OBJ_BLOB;
+    } else if (strncmp((char *)buffer, "tree ", 5) == 0) {
+        *type_out = OBJ_TREE;
+    } else if (strncmp((char *)buffer, "commit ", 7) == 0) {
+        *type_out = OBJ_COMMIT;
+    } else {
+        free(buffer);
+        return -1; 
+    }
+
+    // calc where the actual data starts
+    size_t header_len = (unsigned char *)null_pos - buffer;
+    *len_out = file_size - header_len - 1;
+
+    // copy data over so we can return it cleanly
+    *data_out = malloc(*len_out);
+    if (!*data_out) {
+        free(buffer);
+        return -1;
+    }
+    memcpy(*data_out, buffer + header_len + 1, *len_out);
+
+    free(buffer);
+    return 0;
 }
